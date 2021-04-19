@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Apr 18 17:50:01 2021
+
+@author: Julie Carey and A
+"""
+
+# import relevant packages
+from pulp import *
+import pandas as pd
+#%%
+
+""" 
+Purpose of this script is to organize sudoku puzzles into different categories:
+    
+- Easy (36+)
+- Medium (27-36)
+- Hard (19-29)
+- Evil (18 or less clues)
+
+
+https://www.quora.com/How-do-they-make-Sudoku-easy-medium-or-hard-Is-it-not-just-how-many-squares-are-revealed#:~:text=very%20limited%20cells.-,Medium%20Sudoku%20normally%20contain%20clues%20from%2027%20to%2036%20and,one%20or%20two%20cells%20only.
+"""
+
+# Basic Manipulations
+sudoku_puzzles = pd.read_csv(r'/Users/elisecarey/Downloads/sudoku.csv')
+
+Category = []
+
+for i in sudoku_puzzles['quizzes']:
+    if str(i).count('0') < 45:
+        Category.append('Easy')
+    if (str(i).count('0') >= 45) & (str(i).count('0') <= (81-30)):
+        Category.append('Medium')
+    if (str(i).count('0') >= (81-29)) & (str(i).count('0') <= (81-19)):
+        Category.append('Hard')
+    if str(i).count('0') >= (81-18):
+        Category.append('Evil')
+        
+        
+sudoku_puzzles['Category'] = Category
+
+Easy = sudoku_puzzles[sudoku_puzzles['Category'] == 'Easy']
+Medium = sudoku_puzzles[sudoku_puzzles['Category'] == 'Medium']
+Hard = sudoku_puzzles[sudoku_puzzles['Category'] == 'Hard']
+Evil = sudoku_puzzles[sudoku_puzzles['Category'] == 'Evil']
+#%%
+
+# Indices
+product = ['A','B','C','D1','D2','E1','E2'] # Product types
+machine = ['1','2','3'] # Machine numbers
+
+# Sets
+time = [(p,m) for p in product for m in machine] # Special set for product and machine combinations
+product_limit = ['D1','E1'] # Special set for product types that have a limit of sale
+
+# Data
+time = {('A','1'):12, ('B','1'):7, ('C','1'):8, ('D1','1'):10, ('D2','1'):10, ('E1','1'):7, ('E2','1'):7, # Time it takes to produce each product p for machine 1
+        ('A','2'):8, ('B','2'):9, ('C','2'):4, ('D1','2'):0, ('D2','2'):0, ('E1','2'):11, ('E2','2'):11, # Time it takes to produce each product p for machine 2
+        ('A','3'):5, ('B','3'):10, ('C','3'):7, ('D1','3'):3, ('D2','3'):3, ('E1','3'):2, ('E2','3'):2} # Time it takes to produce each product p for machine 3
+sell_price = {'A':5,'B':4,'C':5,'D1':4,'D2':3,'E1':4,'E2':3} # Price product p can sell for
+prod_cost = {'A':2,'B':1,'C':2,'D1':1,'D2':1,'E1':1,'E2':1} # Cost it takes to produce product p
+machine_cost = {'1':4/60,'2':4/60,'3':3/60} # Cost it takes to produce using machine m per minute
+availability = {'1':7680,'2':7680,'3':7680} # Availability for machine m in minutes per week
+production_limit = {'D1':20,'E1':20} # Production limit for product 
+production_start = {'D2' : 21,'E2' : 21} # Production minimum
+
+# Create Variables
+PRODUCE = LpVariable.dicts("PRODUCE",product,lowBound = 0) # Assume products do not need to be integers
+USE = LpVariable.dicts("USE", machine, lowBound = 0) # Assume production times can be cut in half
+
+# Create Optimization model
+model = LpProblem("production_model", LpMaximize) 
+
+# Objective function, Max Z = Revenue - Production costs - Machine costs
+model += sum(sell_price[p]*PRODUCE[p] for p in product) - (sum(prod_cost[p]*PRODUCE[p] for p in product)) - (sum(machine_cost[m]*USE[m] for m in machine))
+
+# Constraints
+# Time limits
+for m in machine:
+    model += sum(time[p,m]*PRODUCE[p] for p in product) - USE[m] <= 0
+
+# Product production limits
+for p in product_limit:
+    model += PRODUCE[p] <= production_limit[p]
+
+# Machine limits
+for m in machine:
+    model += USE[m] <= availability[m]
+
+# Solve model
+model.solve()
+
+if model.status != 1:
+    print("Model failed to solve")
+else:
+    print("objective funciton value at optimal =" + str(value(model.objective)))
+    for p in product:
+        print("\t" +  p + ": " + str(PRODUCE[p].value()))
+    for m in machine:
+        print("\t" +  m + ": " + str(USE[m].value()))
+        
+        
+        
+        
+        
